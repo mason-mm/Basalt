@@ -1,0 +1,41 @@
+# ==========================================
+# Basalt Engine & BBT Build Artifacts
+# ==========================================
+**/Binaries/
+**/Intermediate/
+**/Export/
+**/Publish/
+
+# Standalone build artifacts at root
+/Binaries/
+/Intermediate/
+/Export/
+/Publish/
+Basalt.sln
+build.ninja
+
+# ==========================================
+# .NET / MSBuild Temporary Files
+# ==========================================
+**/bin/
+**/obj/
+.vs/
+.vscode/
+.idea/
+*.user
+*.userosv
+*.suo
+*.userprefs
+
+# ==========================================
+# OS Generated Files
+# ==========================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==========================================
+# Test Game Projects (Generated via BBT)
+# ==========================================
+# Ignore local test project folders created during development
+/TestGame/
