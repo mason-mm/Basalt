@@ -57,6 +57,4 @@ dotnet publish Tools/BasaltBuild/BasaltBuild.csproj -c Release -r linux-x64 -o T
 # macOS
 dotnet publish Tools/BasaltBuild/BasaltBuild.csproj -c Release -r osx-x64 -o Tools/BasaltBuild/Binaries/Mac
 ```
-
 ---
-```
