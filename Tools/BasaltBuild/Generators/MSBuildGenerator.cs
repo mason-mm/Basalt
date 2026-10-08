@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using BasaltBuild.Core;
@@ -7,6 +8,14 @@ namespace BasaltBuild.Generators;
 
 public static class MSBuildGenerator
 {
+    // Generates a consistent GUID based on the module name
+    private static Guid GenerateDeterministicGuid(string input)
+    {
+        using var md5 = MD5.Create();
+        byte[] hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
+        return new Guid(hash);
+    }
+
     public static void GenerateVcxproj(string rootDir, string moduleDir, ModuleData module, TargetPlatform target)
     {
         string projectFilesDir = Path.Combine(rootDir, "Intermediate", "ProjectFiles");
@@ -24,12 +33,13 @@ public static class MSBuildGenerator
             _ => "StaticLibrary"
         };
 
+        string projectGuid = GenerateDeterministicGuid(module.Name).ToString().ToUpper();
         XNamespace ns = "http://schemas.microsoft.com/developer/msbuild/2003";
 
         var doc = new XDocument(
             new XElement(ns + "Project",
                 new XAttribute("DefaultTargets", "Build"),
-                new XAttribute("ToolsVersion", "17.0"),
+                new XAttribute("ToolsVersion", "Current"),
 
                 new XElement(ns + "ItemGroup",
                     new XAttribute("Label", "ProjectConfigurations"),
@@ -41,7 +51,7 @@ public static class MSBuildGenerator
 
                 new XElement(ns + "PropertyGroup",
                     new XAttribute("Label", "Globals"),
-                    new XElement(ns + "ProjectGuid", $"{{{Guid.NewGuid().ToString().ToUpper()}}}"),
+                    new XElement(ns + "ProjectGuid", $"{{{projectGuid}}}"),
                     new XElement(ns + "Keyword", "Win32Proj"),
                     new XElement(ns + "RootNamespace", module.Name),
                     new XElement(ns + "WindowsTargetPlatformVersion", "10.0")
@@ -51,7 +61,7 @@ public static class MSBuildGenerator
 
                 new XElement(ns + "PropertyGroup",
                     new XElement(ns + "ConfigurationType", configType),
-                    new XElement(ns + "PlatformToolset", "v143")
+                    new XElement(ns + "PlatformToolset", "$(DefaultPlatformToolset)")
                 ),
 
                 new XElement(ns + "Import", new XAttribute("Project", @"$(VCTargetsPath)\Microsoft.Cpp.props")),
@@ -72,6 +82,13 @@ public static class MSBuildGenerator
 
                 new XElement(ns + "ItemGroup", hppFiles.Select(h => new XElement(ns + "ClInclude", new XAttribute("Include", h)))),
                 new XElement(ns + "ItemGroup", cppFiles.Select(c => new XElement(ns + "ClCompile", new XAttribute("Include", c)))),
+
+                new XElement(ns + "ItemGroup", module.Dependencies.Select(dep =>
+                    new XElement(ns + "ProjectReference", new XAttribute("Include", $"{dep}.vcxproj"),
+                        new XElement(ns + "Project", $"{{{GenerateDeterministicGuid(dep).ToString().ToUpper()}}}")
+                    )
+                )),
+
                 new XElement(ns + "Import", new XAttribute("Project", @"$(VCTargetsPath)\Microsoft.Cpp.targets"))
             )
         );
@@ -90,7 +107,7 @@ public static class MSBuildGenerator
 
         foreach (var m in modules)
         {
-            string projGuid = Guid.NewGuid().ToString().ToUpper();
+            string projGuid = GenerateDeterministicGuid(m.Data.Name).ToString().ToUpper();
             string vcxprojPath = Path.Combine(rootDir, "Intermediate", "ProjectFiles", $"{m.Data.Name}.vcxproj");
             string relPath = Path.GetRelativePath(rootDir, vcxprojPath);
 
@@ -99,12 +116,28 @@ public static class MSBuildGenerator
         }
 
         sb.AppendLine("Global");
+
         sb.AppendLine("\tGlobalSection(SolutionConfigurationPlatforms) = preSolution");
-        sb.AppendLine("\t\tDebug|x64 = Debug|x64");
-        sb.AppendLine("\t\tRelease|x64 = Release|x64");
-        sb.AppendLine("\t\tDevelopment|x64 = Development|x64");
-        sb.AppendLine("\t\tShipping|x64 = Shipping|x64");
+        string[] configs = { "Debug|x64", "Release|x64", "Development|x64", "Shipping|x64" };
+        foreach (var cfg in configs)
+        {
+            sb.AppendLine($"\t\t{cfg} = {cfg}");
+        }
         sb.AppendLine("\tEndGlobalSection");
+
+        // THIS is what tells MSBuild to actually build the mapped projects
+        sb.AppendLine("\tGlobalSection(ProjectConfigurationPlatforms) = postSolution");
+        foreach (var m in modules)
+        {
+            string projGuid = GenerateDeterministicGuid(m.Data.Name).ToString().ToUpper();
+            foreach (var cfg in configs)
+            {
+                sb.AppendLine($"\t\t{{{projGuid}}}.{cfg}.ActiveCfg = {cfg}");
+                sb.AppendLine($"\t\t{{{projGuid}}}.{cfg}.Build.0 = {cfg}");
+            }
+        }
+        sb.AppendLine("\tEndGlobalSection");
+
         sb.AppendLine("EndGlobal");
 
         File.WriteAllText(slnPath, sb.ToString());

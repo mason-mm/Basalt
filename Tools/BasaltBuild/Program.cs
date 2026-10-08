@@ -1,10 +1,12 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
 using BasaltBuild.CLI;
 using BasaltBuild.Core;
 using BasaltBuild.Generators;
 using BasaltBuild.Pipeline;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
+using YamlDotNet.RepresentationModel;
 
 namespace BasaltBuild;
 
@@ -14,7 +16,6 @@ class Program
     {
         CLIArguments cli = CommandLineParser.Parse(args);
 
-        // 1. Handle Project Initializer ('BBT new <ProjectName> [Path]')
         if (args.Length >= 2 && (args[0].Equals("new", StringComparison.OrdinalIgnoreCase) || args[0].Equals("init", StringComparison.OrdinalIgnoreCase)))
         {
             string inputNameOrPath = args[1];
@@ -24,7 +25,6 @@ class Program
             return;
         }
 
-        // 2. Handle Help / Unknown Commands
         if (cli.Action == CommandAction.Help || cli.Action == CommandAction.Unknown)
         {
             CommandLineParser.PrintHelp();
@@ -36,19 +36,11 @@ class Program
         Console.WriteLine($"[BasaltBuild] Action: {cli.Action} | Target: {cli.Target} | Config: {cli.Config}");
         Console.WriteLine($"[BasaltBuild] Workspace Root: {rootDir}\n");
 
-        // 3. Handle Clean Command
         if (cli.Action == CommandAction.Clean)
         {
             ExecuteClean(rootDir);
             return;
         }
-
-        // 4. YamlDeserializer with safe property matching & fallback list initialization
-        // Use StaticDeserializerBuilder instead of DeserializerBuilder for Native AOT compliance
-        var deserializer = new StaticDeserializerBuilder(new BasaltYamlContext())
-            .WithNamingConvention(PascalCaseNamingConvention.Instance)
-            .IgnoreUnmatchedProperties()
-            .Build();
 
         var basaltFiles = Directory.GetFiles(rootDir, "Build.basalt", SearchOption.AllDirectories);
         List<(string ModulePath, ModuleData Data)> modules = new();
@@ -58,26 +50,36 @@ class Program
             try
             {
                 string yamlText = File.ReadAllText(file);
-                var moduleConfig = deserializer.Deserialize<ModuleConfig>(yamlText);
+                ModuleData? moduleData = ParseModuleYaml(yamlText);
 
-                if (moduleConfig?.Module != null)
+                if (moduleData != null && !string.IsNullOrEmpty(moduleData.Name))
                 {
-                    moduleConfig.Module.Defines ??= new();
-                    moduleConfig.Module.IncludeDirectories ??= new();
-                    moduleConfig.Module.SourceDirectories ??= new();
-                    moduleConfig.Module.Dependencies ??= new();
-
                     string moduleDir = Path.GetDirectoryName(file)!;
-                    modules.Add((moduleDir, moduleConfig.Module));
-                    Console.WriteLine($"[Found Module] {moduleConfig.Module.Name} at {Path.GetRelativePath(rootDir, moduleDir)}");
+                    modules.Add((moduleDir, moduleData));
+                    Console.WriteLine($"[Found Module] {moduleData.Name} at {Path.GetRelativePath(rootDir, moduleDir)}");
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"[Error] Module missing or has no Name in {file}");
+                    Console.ResetColor();
                 }
             }
             catch (Exception e)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"[Error] Failed parsing {file}: {e.Message}");
+                string detail = e.InnerException != null ? e.InnerException.Message : e.Message;
+                Console.WriteLine($"[Error] Failed parsing {file}: {detail}");
                 Console.ResetColor();
             }
+        }
+
+        if (modules.Count == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("[BasaltBuild] No valid modules found. Exiting.");
+            Console.ResetColor();
+            return;
         }
 
         switch (cli.Action)
@@ -103,6 +105,57 @@ class Program
                 EnginePublisher.PublishSDK(rootDir, modules, cli.Target, cli.Config);
                 break;
         }
+    }
+
+    // 100% Native AOT Safe YAML Parser (Bypasses Reflection entirely)
+    static ModuleData? ParseModuleYaml(string yamlText)
+    {
+        var yaml = new YamlStream();
+        using var reader = new StringReader(yamlText);
+        yaml.Load(reader);
+
+        if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root)
+            return null;
+
+        var moduleData = new ModuleData();
+        YamlMappingNode? moduleNode = null;
+
+        // Locate the "Module:" root key
+        foreach (var kvp in root.Children)
+        {
+            if (kvp.Key is YamlScalarNode key && key.Value == "Module")
+            {
+                moduleNode = kvp.Value as YamlMappingNode;
+                break;
+            }
+        }
+
+        if (moduleNode == null) return null;
+
+        // Map properties explicitly so the AOT compiler sees the setters being used
+        foreach (var kvp in moduleNode.Children)
+        {
+            if (kvp.Key is YamlScalarNode keyNode && keyNode.Value != null)
+            {
+                string key = keyNode.Value;
+                if (key == "Name" && kvp.Value is YamlScalarNode nameNode)
+                    moduleData.Name = nameNode.Value ?? "";
+                else if (key == "Type" && kvp.Value is YamlScalarNode typeNode)
+                    moduleData.Type = typeNode.Value ?? "StaticLibrary";
+                else if (key == "CppVersion" && kvp.Value is YamlScalarNode cppNode)
+                    moduleData.CppVersion = cppNode.Value ?? "20";
+                else if (key == "Defines" && kvp.Value is YamlSequenceNode definesSeq)
+                    foreach (var item in definesSeq.Children) moduleData.Defines.Add(((YamlScalarNode)item).Value ?? "");
+                else if (key == "IncludeDirectories" && kvp.Value is YamlSequenceNode incSeq)
+                    foreach (var item in incSeq.Children) moduleData.IncludeDirectories.Add(((YamlScalarNode)item).Value ?? "");
+                else if (key == "SourceDirectories" && kvp.Value is YamlSequenceNode srcSeq)
+                    foreach (var item in srcSeq.Children) moduleData.SourceDirectories.Add(((YamlScalarNode)item).Value ?? "");
+                else if (key == "Dependencies" && kvp.Value is YamlSequenceNode depSeq)
+                    foreach (var item in depSeq.Children) moduleData.Dependencies.Add(((YamlScalarNode)item).Value ?? "");
+            }
+        }
+
+        return moduleData;
     }
 
     static void ExecuteClean(string rootDir)
@@ -158,7 +211,10 @@ class Program
     {
         if (target == TargetPlatform.Win64)
         {
-            foreach (var m in modules) MSBuildGenerator.GenerateVcxproj(rootDir, m.ModulePath, m.Data, target);
+            foreach (var m in modules)
+            {
+                MSBuildGenerator.GenerateVcxproj(rootDir, m.ModulePath, m.Data, target);
+            }
             MSBuildGenerator.GenerateSolution(rootDir, modules);
         }
         else
@@ -169,8 +225,14 @@ class Program
 
     static void ExecuteBuild(string rootDir, TargetPlatform target, BuildConfiguration config)
     {
-        if (target == TargetPlatform.Win64) MSBuildGenerator.Execute(rootDir, config);
-        else NinjaGenerator.Execute(rootDir);
+        if (target == TargetPlatform.Win64)
+        {
+            MSBuildGenerator.Execute(rootDir, config);
+        }
+        else
+        {
+            NinjaGenerator.Execute(rootDir);
+        }
     }
 
     static string GetWorkspaceRootDir()

@@ -1,0 +1,13 @@
+Module:
+  Name: BasaltEditor
+  Type: Executable
+  CppVersion: "20"
+
+  IncludeDirectories:
+    - ../Modules/BasaltCore/Include/
+
+  SourceDirectories:
+    - Source/
+
+  Dependencies:
+    - BasaltCore

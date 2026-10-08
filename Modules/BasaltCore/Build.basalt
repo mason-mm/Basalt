@@ -1,9 +1,13 @@
 Module:
-	Name: BasaltCore
-	Type: DynamicLibrary
-	CppVersion: 20
-	Defines:
-	IncludeDirectories:
-	 - Include
-	SourceDirectories:
-	 - Source
+  Name: BasaltCore
+  Type: DynamicLibrary
+  CppVersion: "20"
+
+  Defines:
+    - BS_CORE_EXPORTS
+
+  IncludeDirectories:
+    - Include/
+
+  SourceDirectories:
+    - Source/

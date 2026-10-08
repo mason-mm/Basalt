@@ -1,9 +1,11 @@
+using BasaltBuild.Core;
 using YamlDotNet.Serialization;
 
 namespace BasaltBuild.Core;
 
-// Instructs YamlDotNet source generator to produce reflection-free parsers for AOT
 [YamlStaticContext]
+[YamlSerializable(typeof(ModuleConfig))]
+[YamlSerializable(typeof(ModuleData))]
 public partial class BasaltYamlContext : StaticContext
 {
 }
