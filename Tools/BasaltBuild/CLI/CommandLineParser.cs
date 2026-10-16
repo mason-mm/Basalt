@@ -87,10 +87,11 @@ COMMANDS:
   build        Configures and compiles all engine & game modules
   export       Builds and packages a standalone game release for players
   publish      Compiles and packages the Basalt Engine SDK for developers
-  clean        Deletes all generated build files, solutions, and binaries
-  new <Name>   Generates a new game project folder structure
-  -h, --help   Displays this help menu
-
+  clean        Deletes all generated build files, solutions, and binaries");
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine(@"  DEPRECATED:  new <Name>   Generates a new game project folder structure");
+        Console.ResetColor();
+        Console.WriteLine(@"  -h, --help   Displays this help menu
 OPTIONS:
   --target=<win64|linux|mac>     Sets the compilation target platform (Default: Host OS)
   --config=<debug|release|dev|shipping>

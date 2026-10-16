@@ -18,11 +18,16 @@ class Program
 
         if (args.Length >= 2 && (args[0].Equals("new", StringComparison.OrdinalIgnoreCase) || args[0].Equals("init", StringComparison.OrdinalIgnoreCase)))
         {
-            string inputNameOrPath = args[1];
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("[BasaltBuild] Warning: This feature is deprecated. It will be added back shortly.");
+            Console.ResetColor();
+            return;
+
+            /*string inputNameOrPath = args[1];
             string? targetPath = args.Length >= 3 ? args[2] : null;
 
             ProjectInitializer.CreateProject(inputNameOrPath, targetPath);
-            return;
+            return;*/
         }
 
         if (cli.Action == CommandAction.Help || cli.Action == CommandAction.Unknown)

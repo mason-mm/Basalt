@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace BasaltBuild.CLI;
 
+[Obsolete("BasaltProjectModel is deprecated. This feature will be added back shortly.", true)]
 public class BasaltProjectModel
 {
     public string Name { get; set; } = string.Empty;
@@ -12,11 +13,13 @@ public class BasaltProjectModel
     public string StartupScene { get; set; } = "Content/Scenes/MainScene.bsscene";
 }
 
+[Obsolete("ProjectJsonContext is deprecated. This feature will be added back shortly.", true)]
 [JsonSerializable(typeof(BasaltProjectModel))]
 public partial class ProjectJsonContext : JsonSerializerContext
 {
 }
 
+[Obsolete("ProjectInitializer is deprecated. This feature will be added back shortly.", true)]
 public static class ProjectInitializer
 {
     public static void CreateProject(string inputPath, string? targetDirectory = null)
