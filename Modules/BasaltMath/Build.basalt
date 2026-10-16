@@ -1,0 +1,12 @@
+Module:
+  Name: BasaltMath
+  Type: StaticLibrary
+  CppVersion: "20"
+
+  Defines:
+
+  IncludeDirectories:
+    - Include/
+
+  SourceDirectories:
+    - Source/
