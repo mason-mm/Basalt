@@ -3,6 +3,8 @@ Module:
   Type: Executable
   CppVersion: "20"
 
+  Defines:
+
   IncludeDirectories:
     - ../Modules/BasaltCore/Include/
 

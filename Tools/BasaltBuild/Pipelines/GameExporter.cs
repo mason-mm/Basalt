@@ -1,20 +1,33 @@
-using BasaltBuild.Core;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using BasaltBuild.Util;
+using BasaltBuild.Pipelines;
 
-namespace BasaltBuild.Pipeline;
+/// <summary>
+/// Holds the GameExporter class.
+/// </summary>
+namespace BasaltBuild.Pipelines;
 
+/// <summary>
+/// Handles publishing the engine SDK for shipping.
+/// </summary>
 public static class GameExporter
 {
-    public static void ExportGamePackage(string rootDir, List<(string ModulePath, ModuleData Data)> modules, TargetPlatform target, BuildConfiguration config)
+    /// <summary>
+    /// Executes the game export pipeline.
+    /// </summary>
+    public static void Execute(PipelineContext context)
     {
         Console.ForegroundColor = ConsoleColor.Magenta;
-        Console.WriteLine($"\n[BasaltBuild Exporter] Exporting Game Build for Gamers ({target} - {config})...");
+        Console.WriteLine($"\n[BasaltBuild Exporter] Exporting Game Build for Gamers ({context.Target} - {context.Config})...");
         Console.ResetColor();
 
-        string exportDir = Path.Combine(rootDir, "Export", $"{target}_{config}");
+        string exportDir = Path.Combine(context.RootDir, "Export", $"{context.Target}_{context.Config}");
         if (Directory.Exists(exportDir)) Directory.Delete(exportDir, true);
         Directory.CreateDirectory(exportDir);
 
-        string binariesPath = Path.Combine(rootDir, "Binaries", target.ToString(), config.ToString());
+        string binariesPath = Path.Combine(context.RootDir, "Binaries", context.Target.ToString(), context.Config.ToString());
 
         if (!Directory.Exists(binariesPath))
         {
@@ -37,29 +50,16 @@ public static class GameExporter
             }
         }
 
-        // Copy Content folder if present
-        string contentDir = Path.Combine(rootDir, "Content");
+        // Content folder
+        string contentDir = Path.Combine(context.RootDir, "Content");
         if (Directory.Exists(contentDir))
         {
-            CopyDirectory(contentDir, Path.Combine(exportDir, "Content"));
+            PipelineBase.CopyDirectory(contentDir, Path.Combine(exportDir, "Content"));
             Console.WriteLine(" -> Packaged Content/Assets Directory");
         }
 
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine($"\n[BasaltBuild] Standalone Game Export complete!\nOutput directory: {exportDir}");
         Console.ResetColor();
-    }
-
-    private static void CopyDirectory(string sourceDir, string destinationDir)
-    {
-        Directory.CreateDirectory(destinationDir);
-        foreach (var file in Directory.GetFiles(sourceDir))
-        {
-            File.Copy(file, Path.Combine(destinationDir, Path.GetFileName(file)), true);
-        }
-        foreach (var subDir in Directory.GetDirectories(sourceDir))
-        {
-            CopyDirectory(subDir, Path.Combine(destinationDir, Path.GetFileName(subDir)));
-        }
     }
 }

@@ -1,31 +1,82 @@
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Security.Cryptography;
+using System.IO;
+using System.Linq;
 using System.Text;
 using System.Xml.Linq;
-using BasaltBuild.Core;
+using BasaltBuild.Util;
+
+/// <summary>
+/// Generates the required files to build using MSBuild.
+/// </summary>
 
 namespace BasaltBuild.Generators;
 
-public static class MSBuildGenerator
+/// <summary>
+/// Generates MSBuild files for building the project.
+/// </summary>
+public class MSBuildGenerator : BuildGenerator
 {
-    // Generates a consistent GUID based on the module name
-    private static Guid GenerateDeterministicGuid(string input)
+    /// <inheritdoc />
+    public override void ExecuteBuild(string rootDir, BuildConfiguration? config = null)
     {
-        using var md5 = MD5.Create();
-        byte[] hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
-        return new Guid(hash);
+        // Get the config.
+        BuildConfiguration activeConfig = config ?? BuildConfiguration.Debug;
+        Console.WriteLine($"\n[BasaltBuild] Triggering MSBuild ({activeConfig}|x64).");
+
+        // Setup the process.
+        ProcessStartInfo psi = new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = $"/c msbuild Basalt.sln /p:Configuration={activeConfig} /p:Platform=x64 /m",
+            WorkingDirectory = rootDir,
+            UseShellExecute = false
+        };
+
+        // Start the process.
+        var process = Process.Start(psi);
+        process?.WaitForExit();
     }
 
-    public static void GenerateVcxproj(string rootDir, string moduleDir, ModuleData module, TargetPlatform target)
+    /// <inheritdoc />
+    public override void Configure(string rootDir, List<(string ModulePath, ModuleData Data)> modules, TargetPlatform target)
     {
+        Console.WriteLine("[BasaltBuild] Configuring MSBuild solution and projects...");
+
+        // Setup binaries directories.
         string projectFilesDir = Path.Combine(rootDir, "Intermediate", "ProjectFiles");
         Directory.CreateDirectory(projectFilesDir);
+
+        // Generate .vcxproj files for each module.
+        foreach (var (moduleDir, module) in modules)
+        {
+            GenerateVcxproj(rootDir, moduleDir, module, target);
+        }
+
+        // Generate the master solution file linking all of the modules.
+        GenerateSolution(rootDir, modules);
+    }
+
+    /// <summary>
+    /// Generates the Vcxproj files for each module.
+    /// </summary>
+    /// <param name="rootDir">The directory to start the build form (CWD).</param>
+    /// <param name="moduleDir">The directory the targeted module is in.</param>
+    /// <param name="module">The modules data object.</param>
+    /// <param name="target">The target platform to build for.</param>
+    private static void GenerateVcxproj(string rootDir, string moduleDir, ModuleData module, TargetPlatform target)
+    {
+        // Setup file paths.
+        string projectFilesDir = Path.Combine(rootDir, "Intermediate", "ProjectFiles");
         string vcxprojPath = Path.Combine(projectFilesDir, $"{module.Name}.vcxproj");
 
-        var cppFiles = GetSourceFiles(moduleDir, module.SourceDirectories, "*.cpp");
-        var hppFiles = GetSourceFiles(moduleDir, module.SourceDirectories, "*.h")
-            .Concat(GetSourceFiles(moduleDir, module.IncludeDirectories, "*.h")).ToList();
+        // Get files using the helper method in the base class.
+        var cppFiles = GetFiles(moduleDir, module.SourceDirectories, "*.cpp");
+        var hFiles = GetFiles(moduleDir, module.SourceDirectories, "*.h")
+            .Concat(GetFiles(moduleDir, module.IncludeDirectories, "*.h")).ToList();
 
+        // Find config type.
         string configType = module.Type switch
         {
             "DynamicLibrary" => "DynamicLibrary",
@@ -33,6 +84,7 @@ public static class MSBuildGenerator
             _ => "StaticLibrary"
         };
 
+        // Setup the XDocument.
         string projectGuid = GenerateDeterministicGuid(module.Name).ToString().ToUpper();
         XNamespace ns = "http://schemas.microsoft.com/developer/msbuild/2003";
 
@@ -43,10 +95,7 @@ public static class MSBuildGenerator
 
                 new XElement(ns + "ItemGroup",
                     new XAttribute("Label", "ProjectConfigurations"),
-                    CreateProjectConfig(ns, "Debug|x64"),
-                    CreateProjectConfig(ns, "Release|x64"),
-                    CreateProjectConfig(ns, "Development|x64"),
-                    CreateProjectConfig(ns, "Shipping|x64")
+                    Enum.GetNames<BuildConfiguration>().Select(cfg =>CreateProjectConfig(ns, $"{cfg}|x64"))
                 ),
 
                 new XElement(ns + "PropertyGroup",
@@ -75,15 +124,15 @@ public static class MSBuildGenerator
                     new XElement(ns + "ClCompile",
                         new XElement(ns + "WarningLevel", "Level3"),
                         new XElement(ns + "LanguageStandard", $"stdcpp{module.CppVersion}"),
-                        new XElement(ns + "AdditionalIncludeDirectories", string.Join(";", module.IncludeDirectories.Select(d => Path.Combine(moduleDir, d)))),
-                        new XElement(ns + "PreprocessorDefinitions", string.Join(";", module.Defines))
+                        new XElement(ns + "AdditionalIncludeDirectories", string.Join(";", (module.IncludeDirectories ?? []).Select(d => Path.Combine(moduleDir, d)))),
+                        new XElement(ns + "PreprocessorDefinitions", string.Join(";", module.Defines ?? []))
                     )
                 ),
 
-                new XElement(ns + "ItemGroup", hppFiles.Select(h => new XElement(ns + "ClInclude", new XAttribute("Include", h)))),
+                new XElement(ns + "ItemGroup", hFiles.Select(h => new XElement(ns + "ClInclude", new XAttribute("Include", h)))),
                 new XElement(ns + "ItemGroup", cppFiles.Select(c => new XElement(ns + "ClCompile", new XAttribute("Include", c)))),
 
-                new XElement(ns + "ItemGroup", module.Dependencies.Select(dep =>
+                new XElement(ns + "ItemGroup", (module.Dependencies ?? []).Select(dep =>
                     new XElement(ns + "ProjectReference", new XAttribute("Include", $"{dep}.vcxproj"),
                         new XElement(ns + "Project", $"{{{GenerateDeterministicGuid(dep).ToString().ToUpper()}}}")
                     )
@@ -93,18 +142,26 @@ public static class MSBuildGenerator
             )
         );
 
+        // Clean up.
         doc.Save(vcxprojPath);
         Console.WriteLine($" -> Generated MSBuild Project: {Path.GetFileName(vcxprojPath)}");
     }
 
-    public static void GenerateSolution(string rootDir, List<(string ModulePath, ModuleData Data)> modules)
+    /// <summary>
+    /// Generates the Solution files.
+    /// </summary>
+    /// <param name="rootDir">The directory to start the build form (CWD).</param>
+    /// <param name="modules">The list of modules to link.</param>
+    private static void GenerateSolution(string rootDir, List<(string ModulePath, ModuleData Data)> modules)
     {
         string slnPath = Path.Combine(rootDir, "Basalt.sln");
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
 
+        // Write the contents of the file.
         sb.AppendLine("Microsoft Visual Studio Solution File, Format Version 12.00");
         sb.AppendLine("# Visual Studio Version 17");
 
+        // Add the modules.
         foreach (var m in modules)
         {
             string projGuid = GenerateDeterministicGuid(m.Data.Name).ToString().ToUpper();
@@ -118,45 +175,38 @@ public static class MSBuildGenerator
         sb.AppendLine("Global");
 
         sb.AppendLine("\tGlobalSection(SolutionConfigurationPlatforms) = preSolution");
-        string[] configs = { "Debug|x64", "Release|x64", "Development|x64", "Shipping|x64" };
-        foreach (var cfg in configs)
+        var configNames = Enum.GetNames<BuildConfiguration>();
+        foreach (var cfg in configNames)
         {
-            sb.AppendLine($"\t\t{cfg} = {cfg}");
+            sb.AppendLine($"\t\t{cfg}|x64 = {cfg}|x64");
         }
         sb.AppendLine("\tEndGlobalSection");
 
-        // THIS is what tells MSBuild to actually build the mapped projects
         sb.AppendLine("\tGlobalSection(ProjectConfigurationPlatforms) = postSolution");
         foreach (var m in modules)
         {
             string projGuid = GenerateDeterministicGuid(m.Data.Name).ToString().ToUpper();
-            foreach (var cfg in configs)
+            foreach (var cfg in configNames)
             {
-                sb.AppendLine($"\t\t{{{projGuid}}}.{cfg}.ActiveCfg = {cfg}");
-                sb.AppendLine($"\t\t{{{projGuid}}}.{cfg}.Build.0 = {cfg}");
+                sb.AppendLine($"\t\t{{{projGuid}}}.{cfg}|x64.ActiveCfg = {cfg}|x64");
+                sb.AppendLine($"\t\t{{{projGuid}}}.{cfg}|x64.Build.0 = {cfg}|x64");
             }
         }
         sb.AppendLine("\tEndGlobalSection");
 
         sb.AppendLine("EndGlobal");
 
+        // Clean up.
         File.WriteAllText(slnPath, sb.ToString());
         Console.WriteLine($" -> Generated Visual Studio Solution: {Path.GetFileName(slnPath)}");
     }
 
-    public static void Execute(string rootDir, BuildConfiguration config)
-    {
-        Console.WriteLine($"\n[BasaltBuild] Triggering MSBuild ({config}|x64)...");
-        ProcessStartInfo psi = new ProcessStartInfo
-        {
-            FileName = "cmd.exe",
-            Arguments = $"/c msbuild Basalt.sln /p:Configuration={config} /p:Platform=x64 /m",
-            WorkingDirectory = rootDir,
-            UseShellExecute = false
-        };
-        Process.Start(psi)?.WaitForExit();
-    }
-
+    /// <summary>
+    /// Creates the ProjectConfiguration Element for each section.
+    /// </summary>
+    /// <param name="ns">The XNamepsace to use.</param>
+    /// <param name="name">The name of the configuration.</param>
+    /// <returns>The generated XElement.</returns>
     private static XElement CreateProjectConfig(XNamespace ns, string name)
     {
         return new XElement(ns + "ProjectConfiguration",
@@ -164,19 +214,5 @@ public static class MSBuildGenerator
             new XElement(ns + "Configuration", name.Split('|')[0]),
             new XElement(ns + "Platform", name.Split('|')[1])
         );
-    }
-
-    private static List<string> GetSourceFiles(string baseDir, List<string> subDirs, string pattern)
-    {
-        var files = new List<string>();
-        foreach (var subDir in subDirs)
-        {
-            string fullPath = Path.Combine(baseDir, subDir);
-            if (Directory.Exists(fullPath))
-            {
-                files.AddRange(Directory.GetFiles(fullPath, pattern, SearchOption.AllDirectories));
-            }
-        }
-        return files;
     }
 }

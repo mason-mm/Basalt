@@ -1,106 +1,91 @@
-using System.Runtime.InteropServices;
-using BasaltBuild.Core;
+using System;
+using BasaltBuild.Util;
+using BasaltBuild.CLI;
+
+/// <summary>
+/// Handles command line inputs and parameters and forwards it the CommandLineHelper.
+/// </summary>
 
 namespace BasaltBuild.CLI;
 
-public class CLIArguments
-{
-    public CommandAction Action { get; set; } = CommandAction.Unknown;
-    public TargetPlatform Target { get; set; } = GetDefaultPlatform();
-    public BuildConfiguration Config { get; set; } = BuildConfiguration.Debug;
-
-    private static TargetPlatform GetDefaultPlatform()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return TargetPlatform.Win64;
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return TargetPlatform.Mac;
-        return TargetPlatform.Linux;
-    }
-}
-
+/// <summary>
+/// Handles parsing arguments.
+/// </summary>
 public static class CommandLineParser
 {
-    public static CLIArguments Parse(string[] args)
+    /// <summary>
+    /// Runs the parser.
+    /// </summary>
+    /// <param name="args">The args passed in Main.</param>
+    public static void Run(string[] args)
     {
-        var result = new CLIArguments();
-
         if (args.Length == 0)
         {
-            result.Action = CommandAction.Help;
-            return result;
+            CommandLineHelper.PrintHelp();
+            return;
         }
 
-        foreach (var arg in args)
+        string command = args[0].ToLowerInvariant();
+        string rootDir = Directory.GetCurrentDirectory();
+
+        // Parse optional arguments.
+        string backend = GetFlag(args, "--backend", "msbuild");
+        TargetPlatform target = Enum.TryParse<TargetPlatform>(GetFlag(args, "--platform", "Win64"), true, out var parsedPlatform) ? parsedPlatform : TargetPlatform.Win64;
+        BuildConfiguration config = Enum.TryParse<BuildConfiguration>(GetFlag(args, "--config", "Debug"), true, out var parsedConfig) ? parsedConfig : BuildConfiguration.Debug;
+
+        // Run the correct command.
+        switch (command)
         {
-            if (arg is "-h" or "--help" or "help")
-            {
-                result.Action = CommandAction.Help;
-                return result;
-            }
-
-            if (arg.Equals("configure", StringComparison.OrdinalIgnoreCase)) result.Action = CommandAction.Configure;
-            else if (arg.Equals("build", StringComparison.OrdinalIgnoreCase)) result.Action = CommandAction.Build;
-            else if (arg.Equals("export", StringComparison.OrdinalIgnoreCase)) result.Action = CommandAction.Export;
-            else if (arg.Equals("publish", StringComparison.OrdinalIgnoreCase)) result.Action = CommandAction.Publish;
-            else if (arg.Equals("clean", StringComparison.OrdinalIgnoreCase)) result.Action = CommandAction.Clean;
-            else if (arg.StartsWith("--target=", StringComparison.OrdinalIgnoreCase))
-            {
-                var platformStr = arg.Substring(9).ToLower();
-                result.Target = platformStr switch
-                {
-                    "win64" or "windows" => TargetPlatform.Win64,
-                    "linux" => TargetPlatform.Linux,
-                    "mac" or "macos" or "osx" => TargetPlatform.Mac,
-                    _ => result.Target
-                };
-            }
-            else if (arg.StartsWith("--config=", StringComparison.OrdinalIgnoreCase))
-            {
-                var configStr = arg.Substring(9).ToLower();
-                result.Config = configStr switch
-                {
-                    "debug" => BuildConfiguration.Debug,
-                    "release" => BuildConfiguration.Release,
-                    "development" or "dev" => BuildConfiguration.Development,
-                    "shipping" => BuildConfiguration.Shipping,
-                    _ => result.Config
-                };
-            }
+            case "configure":
+                CommandLineHelper.Configure(rootDir, backend, target);
+                break;
+            case "build":
+                CommandLineHelper.Build(rootDir, backend, config);
+                break;
+            case "clean":
+                CommandLineHelper.Clean(rootDir);
+                break;
+            case "publish":
+                CommandLineHelper.Publish(rootDir, target, config);
+                break;
+            case "export":
+                CommandLineHelper.Export(rootDir, target, config);
+                break;
+            case "-h":
+                CommandLineHelper.PrintHelp();
+                break;
+            case "--help":
+                CommandLineHelper.PrintHelp();
+                break;
+            default:
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[Error] Unknown command: '{command}'");
+                Console.ResetColor();
+                CommandLineHelper.PrintHelp();
+                break;
         }
-
-        return result;
     }
 
-    public static void PrintHelp()
+    /// <summary>
+    /// Returns the flag based on given inputs.
+    /// </summary>
+    /// <param name="args">The arguments from Main.</param>
+    /// <param name="flagName">The flag name to look for.</param>
+    /// <param name="defaultValue">The default value if the flag is not there.</param>
+    /// <returns>The flag.</returns>
+    private static string GetFlag(string[] args, string flagName, string defaultValue)
     {
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine(@"
-===================================================================
-                   BASALT ENGINE BUILD SYSTEM                     
-===================================================================");
-        Console.ResetColor();
-        Console.WriteLine(@"
-USAGE:
-  BasaltBuild <command> [options]
-
-COMMANDS:
-  configure    Generates native build scripts (Visual Studio / Ninja)
-  build        Configures and compiles all engine & game modules
-  export       Builds and packages a standalone game release for players
-  publish      Compiles and packages the Basalt Engine SDK for developers
-  clean        Deletes all generated build files, solutions, and binaries");
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine(@"  DEPRECATED:  new <Name>   Generates a new game project folder structure");
-        Console.ResetColor();
-        Console.WriteLine(@"  -h, --help   Displays this help menu
-OPTIONS:
-  --target=<win64|linux|mac>     Sets the compilation target platform (Default: Host OS)
-  --config=<debug|release|dev|shipping>
-                                 Sets build configuration (Default: Debug)
-
-EXAMPLES:
-  BasaltBuild clean
-  BasaltBuild configure --target=win64
-  BasaltBuild build --config=release
-");
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i].StartsWith($"{flagName}=", StringComparison.OrdinalIgnoreCase))
+            {
+                return args[i].Substring(flagName.Length + 1);
+            }
+            if (args[i].Equals(flagName, StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                return args[i + 1];
+            }
+        }
+        return defaultValue;
     }
 }

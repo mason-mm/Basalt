@@ -1,17 +1,31 @@
-using BasaltBuild.Core;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using BasaltBuild.Util;
+using BasaltBuild.Pipelines;
 
-namespace BasaltBuild.Pipeline;
+/// <summary>
+/// Holds the EnginePublisher class.
+/// </summary>
+namespace BasaltBuild.Pipelines;
 
+/// <summary>
+/// Handles publishing the engine SDK for shipping.
+/// </summary>
 public static class EnginePublisher
 {
-    public static void PublishSDK(string rootDir, List<(string ModulePath, ModuleData Data)> modules, TargetPlatform target, BuildConfiguration config)
+    /// <summary>
+    /// Executes the publishing pipeline.
+    /// </summary>
+    public static void Execute(PipelineContext context)
     {
         Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine($"\n[BasaltBuild Publisher] Publishing Engine SDK ({target} - {config})...");
+        Console.WriteLine($"\n[BasaltBuild Publisher] Publishing Engine SDK ({context.Target} - {context.Config})...");
         Console.ResetColor();
 
-        string publishDir = Path.Combine(rootDir, "Publish", "BasaltEngineSDK");
-        string publishBinaries = Path.Combine(publishDir, "Binaries", target.ToString(), config.ToString());
+        // Directories.
+        string publishDir = Path.Combine(context.RootDir, "Publish", "BasaltEngineSDK");
+        string publishBinaries = Path.Combine(publishDir, "Binaries", context.Target.ToString(), context.Config.ToString());
         string publishIncludes = Path.Combine(publishDir, "Include");
 
         if (Directory.Exists(publishDir)) Directory.Delete(publishDir, true);
@@ -19,8 +33,8 @@ public static class EnginePublisher
         Directory.CreateDirectory(publishBinaries);
         Directory.CreateDirectory(publishIncludes);
 
-        // Copy Engine Binaries
-        string sourceBinaries = Path.Combine(rootDir, "Binaries", target.ToString(), config.ToString());
+        // Copy Engine Binaries.
+        string sourceBinaries = Path.Combine(context.RootDir, "Binaries", context.Target.ToString(), context.Config.ToString());
         if (Directory.Exists(sourceBinaries))
         {
             foreach (var file in Directory.GetFiles(sourceBinaries, "*.*", SearchOption.AllDirectories))
@@ -30,15 +44,15 @@ public static class EnginePublisher
             Console.WriteLine($" -> Packaged Engine Binaries into: {publishBinaries}");
         }
 
-        // Copy Public Headers
-        foreach (var (moduleDir, data) in modules)
+        // Copy Public Headers.
+        foreach (var (moduleDir, data) in context.Modules)
         {
             foreach (var incDir in data.IncludeDirectories)
             {
                 string fullInc = Path.Combine(moduleDir, incDir);
                 if (Directory.Exists(fullInc))
                 {
-                    CopyDirectory(fullInc, publishIncludes);
+                    PipelineBase.CopyDirectory(fullInc, publishIncludes);
                 }
             }
         }
@@ -47,18 +61,5 @@ public static class EnginePublisher
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine($"\n[BasaltBuild] Engine SDK successfully published to:\n{publishDir}");
         Console.ResetColor();
-    }
-
-    private static void CopyDirectory(string sourceDir, string destinationDir)
-    {
-        Directory.CreateDirectory(destinationDir);
-        foreach (var file in Directory.GetFiles(sourceDir))
-        {
-            File.Copy(file, Path.Combine(destinationDir, Path.GetFileName(file)), true);
-        }
-        foreach (var subDir in Directory.GetDirectories(sourceDir))
-        {
-            CopyDirectory(subDir, Path.Combine(destinationDir, Path.GetFileName(subDir)));
-        }
     }
 }
