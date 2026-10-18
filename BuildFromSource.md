@@ -9,7 +9,7 @@ This guide outlines how to compile and publish **BasaltBuild Tool (BBT)** and co
 Clone your repository locally and navigate to the root directory:
 
 ```bash
-git clone [https://github.com/YourUsername/Basalt.git](https://github.com/YourUsername/Basalt.git)
+git clone https://github.com/mason-mm/Basalt.git
 cd Basalt
 ```
 
