@@ -98,8 +98,8 @@ public class NinjaGenerator : BuildGenerator
         sb.AppendLine();
 
         sb.AppendLine("rule cxx_compile");
-        sb.AppendLine($"  command = $cxx /nologo /TP /FS {optimizationFlags} $cppstd /Fd$pdbpath /showIncludes $defines $includes /c $in /Fo$out");
-        sb.AppendLine("  description = CXX compiling $out");
+        sb.AppendLine($"  command = $cxx /nologo $langflag /FS {optimizationFlags} $cppstd /Fd$pdbpath /showIncludes $defines $includes /c $in /Fo$out");
+        sb.AppendLine("  description = Compiling $out");
         sb.AppendLine();
 
         sb.AppendLine("rule archive_lib");
@@ -123,7 +123,11 @@ public class NinjaGenerator : BuildGenerator
         {
             sb.AppendLine($"# --- Module: {module.Name} [{config}] ---");
 
-            var cppFiles = GetFiles(moduleDir, module.SourceDirectories ?? [], "*.cpp");
+            // Collect both .cpp and .c source files
+            var sourceFiles = GetFiles(moduleDir, module.SourceDirectories ?? [], "*.cpp")
+                .Concat(GetFiles(moduleDir, module.SourceDirectories ?? [], "*.c"))
+                .ToList();
+
             string moduleObjDir = Path.Combine(rootDir, "Intermediate", "Build", target.ToString(), config.ToString(), module.Name);
             Directory.CreateDirectory(moduleObjDir);
             string relModuleObjDir = Path.GetRelativePath(rootDir, moduleObjDir);
@@ -134,18 +138,22 @@ public class NinjaGenerator : BuildGenerator
 
             var objFiles = new List<string>();
 
-            foreach (var cppFile in cppFiles)
+            foreach (var sourceFile in sourceFiles)
             {
-                string relCpp = Path.GetRelativePath(rootDir, cppFile);
-                string objName = Path.GetFileNameWithoutExtension(cppFile) + ".obj";
+                string relSource = Path.GetRelativePath(rootDir, sourceFile);
+                string objName = Path.GetFileNameWithoutExtension(sourceFile) + ".obj";
                 string objPath = Path.Combine(moduleObjDir, objName);
                 string relObj = Path.GetRelativePath(rootDir, objPath);
                 objFiles.Add(relObj);
 
-                sb.AppendLine($"build {relObj}: cxx_compile {relCpp}");
+                // Use /TC for C source files and /TP for C++ source files
+                string langflag = sourceFile.EndsWith(".c", StringComparison.OrdinalIgnoreCase) ? "/TC" : "/TP";
+
+                sb.AppendLine($"build {relObj}: cxx_compile {relSource}");
                 sb.AppendLine($"  includes = {includes}");
                 sb.AppendLine($"  defines = {defines}");
                 sb.AppendLine($"  cppstd = {cppStd}");
+                sb.AppendLine($"  langflag = {langflag}");
                 sb.AppendLine($"  pdbpath = {relModuleObjDir}\\\\"); // Directs vc140.pdb into intermediate build dir
             }
 

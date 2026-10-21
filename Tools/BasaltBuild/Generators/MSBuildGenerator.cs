@@ -72,7 +72,8 @@ public class MSBuildGenerator : BuildGenerator
         string vcxprojPath = Path.Combine(projectFilesDir, $"{module.Name}.vcxproj");
 
         // Get files using the helper method in the base class.
-        var cppFiles = GetFiles(moduleDir, module.SourceDirectories, "*.cpp");
+        var cppFiles = GetFiles(moduleDir, module.SourceDirectories, "*.cpp")
+            .Concat(GetFiles(moduleDir, module.SourceDirectories, "*.c")).ToList();
         var hFiles = GetFiles(moduleDir, module.SourceDirectories, "*.h")
             .Concat(GetFiles(moduleDir, module.IncludeDirectories, "*.h")).ToList();
 
