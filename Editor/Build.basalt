@@ -6,7 +6,7 @@ Module:
   Defines:
 
   IncludeDirectories:
-    - ../Modules/BasaltCore/Include/
+    - Include/
 
   SourceDirectories:
     - Source/

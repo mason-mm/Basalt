@@ -10,7 +10,6 @@ using BasaltBuild.Util;
 /// <summary>
 /// Generates the required files to build using MSBuild.
 /// </summary>
-
 namespace BasaltBuild.Generators;
 
 /// <summary>
@@ -48,10 +47,10 @@ public class MSBuildGenerator : BuildGenerator
         string projectFilesDir = Path.Combine(rootDir, "Intermediate", "ProjectFiles");
         Directory.CreateDirectory(projectFilesDir);
 
-        // Generate .vcxproj files for each module.
+        // Generate .vcxproj files for each module (passing full modules list for dependency include resolution).
         foreach (var (moduleDir, module) in modules)
         {
-            GenerateVcxproj(rootDir, moduleDir, module, target);
+            GenerateVcxproj(rootDir, moduleDir, module, modules, target);
         }
 
         // Generate the master solution file linking all of the modules.
@@ -64,8 +63,9 @@ public class MSBuildGenerator : BuildGenerator
     /// <param name="rootDir">The directory to start the build form (CWD).</param>
     /// <param name="moduleDir">The directory the targeted module is in.</param>
     /// <param name="module">The modules data object.</param>
+    /// <param name="allModules">The full list of all workspace modules for dependency lookups.</param>
     /// <param name="target">The target platform to build for.</param>
-    private static void GenerateVcxproj(string rootDir, string moduleDir, ModuleData module, TargetPlatform target)
+    private static void GenerateVcxproj(string rootDir, string moduleDir, ModuleData module, List<(string ModulePath, ModuleData Data)> allModules, TargetPlatform target)
     {
         // Setup file paths.
         string projectFilesDir = Path.Combine(rootDir, "Intermediate", "ProjectFiles");
@@ -85,6 +85,26 @@ public class MSBuildGenerator : BuildGenerator
             _ => "StaticLibrary"
         };
 
+        // Collect module's own include directories
+        var includeDirs = new List<string>();
+        foreach (var d in module.IncludeDirectories ?? [])
+        {
+            includeDirs.Add(Path.Combine(moduleDir, d));
+        }
+
+        // Collect include directories from dependent modules (e.g., BasaltEditor including BasaltCore headers)
+        foreach (var depName in module.Dependencies ?? [])
+        {
+            var depModule = allModules.FirstOrDefault(m => m.Data.Name == depName);
+            if (depModule.Data != null)
+            {
+                foreach (var depInc in depModule.Data.IncludeDirectories ?? [])
+                {
+                    includeDirs.Add(Path.Combine(depModule.ModulePath, depInc));
+                }
+            }
+        }
+
         // Setup the XDocument.
         string projectGuid = GenerateDeterministicGuid(module.Name).ToString().ToUpper();
         XNamespace ns = "http://schemas.microsoft.com/developer/msbuild/2003";
@@ -96,7 +116,7 @@ public class MSBuildGenerator : BuildGenerator
 
                 new XElement(ns + "ItemGroup",
                     new XAttribute("Label", "ProjectConfigurations"),
-                    Enum.GetNames<BuildConfiguration>().Select(cfg =>CreateProjectConfig(ns, $"{cfg}|x64"))
+                    Enum.GetNames<BuildConfiguration>().Select(cfg => CreateProjectConfig(ns, $"{cfg}|x64"))
                 ),
 
                 new XElement(ns + "PropertyGroup",
@@ -125,7 +145,7 @@ public class MSBuildGenerator : BuildGenerator
                     new XElement(ns + "ClCompile",
                         new XElement(ns + "WarningLevel", "Level3"),
                         new XElement(ns + "LanguageStandard", $"stdcpp{module.CppVersion}"),
-                        new XElement(ns + "AdditionalIncludeDirectories", string.Join(";", (module.IncludeDirectories ?? []).Select(d => Path.Combine(moduleDir, d)))),
+                        new XElement(ns + "AdditionalIncludeDirectories", string.Join(";", includeDirs)),
                         new XElement(ns + "PreprocessorDefinitions", string.Join(";", module.Defines ?? []))
                     )
                 ),
