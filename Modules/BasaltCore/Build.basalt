@@ -11,3 +11,6 @@ Module:
 
   SourceDirectories:
     - Source/
+
+  Dependencies:
+    - BasaltPlatformWin32

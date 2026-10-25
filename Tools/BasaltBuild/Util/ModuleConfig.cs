@@ -53,6 +53,9 @@ public class ModuleData
     [YamlMember(Alias = "CppVersion", ApplyNamingConventions = false)]
     public string CppVersion { get; set; } = "20";
 
+    [YamlMember(Alias = "Platforms", ApplyNamingConventions = false)]
+    public List<string> Platforms { get; set; } = new();
+
     [YamlMember(Alias = "Defines", ApplyNamingConventions = false)]
     public List<string> Defines { get; set; } = new();
 

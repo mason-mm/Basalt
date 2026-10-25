@@ -52,10 +52,17 @@ public class NinjaGenerator : BuildGenerator
     {
         Console.WriteLine("[BasaltBuild] Configuring Ninja build manifests for all configurations...");
 
+        // Filter modules based on target platform compatibility
+        var activeModules = modules.Where(m =>
+            m.Data.Platforms == null ||
+            m.Data.Platforms.Count == 0 ||
+            m.Data.Platforms.Contains(target.ToString(), StringComparer.OrdinalIgnoreCase)
+        ).ToList();
+
         // Loops through all configs in the enum and generates the Ninja file for it.
         foreach (BuildConfiguration config in Enum.GetValues<BuildConfiguration>())
         {
-            GenerateManifestForConfig(rootDir, modules, target, config);
+            GenerateManifestForConfig(rootDir, activeModules, target, config);
         }
     }
 
@@ -63,7 +70,7 @@ public class NinjaGenerator : BuildGenerator
     /// Generates a configuration specific build manifest file.
     /// </summary>
     /// <param name="rootDir">The directory to start the build form (CWD).</param>
-    /// <param name="modules">The list of modules to link.</param>
+    /// <param name="modules">The list of active modules to build.</param>
     /// <param name="target">The target platform to build for.</param>
     /// <param name="config">The build config to build for like debug or release.</param>
     private static void GenerateManifestForConfig(string rootDir, List<(string ModulePath, ModuleData Data)> modules, TargetPlatform target, BuildConfiguration config)
@@ -132,7 +139,30 @@ public class NinjaGenerator : BuildGenerator
             Directory.CreateDirectory(moduleObjDir);
             string relModuleObjDir = Path.GetRelativePath(rootDir, moduleObjDir);
 
-            string includes = string.Join(" ", (module.IncludeDirectories ?? []).Select(d => $"/I\"{Path.Combine(moduleDir, d)}\""));
+            // Collect module's own include directories
+            var includeDirs = new List<string>();
+            foreach (var d in module.IncludeDirectories ?? [])
+            {
+                includeDirs.Add(Path.Combine(moduleDir, d));
+            }
+
+            // Filter dependencies to only include active modules
+            var validDeps = (module.Dependencies ?? []).Where(dep => modules.Any(m => m.Data.Name == dep)).ToList();
+
+            // Collect include directories from dependent modules
+            foreach (var depName in validDeps)
+            {
+                var depModule = modules.FirstOrDefault(m => m.Data.Name == depName);
+                if (depModule.Data != null)
+                {
+                    foreach (var depInc in depModule.Data.IncludeDirectories ?? [])
+                    {
+                        includeDirs.Add(Path.Combine(depModule.ModulePath, depInc));
+                    }
+                }
+            }
+
+            string includes = string.Join(" ", includeDirs.Select(d => $"/I\"{d}\""));
             string defines = string.Join(" ", (module.Defines ?? []).Select(def => $"/D{def}"));
             string cppStd = $"/std:c++{module.CppVersion}";
 
@@ -168,7 +198,7 @@ public class NinjaGenerator : BuildGenerator
             string objList = string.Join(" ", objFiles);
 
             // Collect dependency .lib paths as explicit inputs to ensure correct build ordering
-            string depLibs = string.Join(" ", (module.Dependencies ?? []).Select(dep => Path.Combine(binDir, $"{dep}.lib")));
+            string depLibs = string.Join(" ", validDeps.Select(dep => Path.Combine(binDir, $"{dep}.lib")));
 
             if (module.Type == "DynamicLibrary")
             {

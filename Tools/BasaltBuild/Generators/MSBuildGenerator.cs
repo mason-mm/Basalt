@@ -47,14 +47,21 @@ public class MSBuildGenerator : BuildGenerator
         string projectFilesDir = Path.Combine(rootDir, "Intermediate", "ProjectFiles");
         Directory.CreateDirectory(projectFilesDir);
 
-        // Generate .vcxproj files for each module (passing full modules list for dependency include resolution).
-        foreach (var (moduleDir, module) in modules)
+        // Filter modules based on target platform compatibility
+        var activeModules = modules.Where(m =>
+            m.Data.Platforms == null ||
+            m.Data.Platforms.Count == 0 ||
+            m.Data.Platforms.Contains(target.ToString(), StringComparer.OrdinalIgnoreCase)
+        ).ToList();
+
+        // Generate .vcxproj files for active modules.
+        foreach (var (moduleDir, module) in activeModules)
         {
-            GenerateVcxproj(rootDir, moduleDir, module, modules, target);
+            GenerateVcxproj(rootDir, moduleDir, module, activeModules, target);
         }
 
-        // Generate the master solution file linking all of the modules.
-        GenerateSolution(rootDir, modules);
+        // Generate the master solution file linking active modules.
+        GenerateSolution(rootDir, activeModules);
     }
 
     /// <summary>
@@ -63,7 +70,7 @@ public class MSBuildGenerator : BuildGenerator
     /// <param name="rootDir">The directory to start the build form (CWD).</param>
     /// <param name="moduleDir">The directory the targeted module is in.</param>
     /// <param name="module">The modules data object.</param>
-    /// <param name="allModules">The full list of all workspace modules for dependency lookups.</param>
+    /// <param name="allModules">The full list of active workspace modules for dependency lookups.</param>
     /// <param name="target">The target platform to build for.</param>
     private static void GenerateVcxproj(string rootDir, string moduleDir, ModuleData module, List<(string ModulePath, ModuleData Data)> allModules, TargetPlatform target)
     {
@@ -92,8 +99,11 @@ public class MSBuildGenerator : BuildGenerator
             includeDirs.Add(Path.Combine(moduleDir, d));
         }
 
-        // Collect include directories from dependent modules (e.g., BasaltEditor including BasaltCore headers)
-        foreach (var depName in module.Dependencies ?? [])
+        // Filter dependencies to only include active modules
+        var validDeps = (module.Dependencies ?? []).Where(dep => allModules.Any(m => m.Data.Name == dep)).ToList();
+
+        // Collect include directories from dependent modules
+        foreach (var depName in validDeps)
         {
             var depModule = allModules.FirstOrDefault(m => m.Data.Name == depName);
             if (depModule.Data != null)
@@ -153,7 +163,7 @@ public class MSBuildGenerator : BuildGenerator
                 new XElement(ns + "ItemGroup", hFiles.Select(h => new XElement(ns + "ClInclude", new XAttribute("Include", h)))),
                 new XElement(ns + "ItemGroup", cppFiles.Select(c => new XElement(ns + "ClCompile", new XAttribute("Include", c)))),
 
-                new XElement(ns + "ItemGroup", (module.Dependencies ?? []).Select(dep =>
+                new XElement(ns + "ItemGroup", validDeps.Select(dep =>
                     new XElement(ns + "ProjectReference", new XAttribute("Include", $"{dep}.vcxproj"),
                         new XElement(ns + "Project", $"{{{GenerateDeterministicGuid(dep).ToString().ToUpper()}}}")
                     )
@@ -172,7 +182,7 @@ public class MSBuildGenerator : BuildGenerator
     /// Generates the Solution files.
     /// </summary>
     /// <param name="rootDir">The directory to start the build form (CWD).</param>
-    /// <param name="modules">The list of modules to link.</param>
+    /// <param name="modules">The list of active modules to include in solution.</param>
     private static void GenerateSolution(string rootDir, List<(string ModulePath, ModuleData Data)> modules)
     {
         string slnPath = Path.Combine(rootDir, "Basalt.sln");
