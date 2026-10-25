@@ -13,11 +13,11 @@ Basalt is a cross-platform C++ game engine designed for easy features and fast d
 ---
 
 ## Tools
-The Basalt Engine uses custom made tools build with different languages including Python3 and C#.
+The Basalt Engine uses custom tools built with different languages including Python3 and C#.
 Basalt currently has two tools:
 
-* BasaltBuild - The main build tools that builds the engine and games written in C#.
-* BasaltDotnetHelper - A Python helper that lets users build C# tools with one single command.
+* BasaltBuild - The main build tool that builds the engine and games, it is written in C#.
+* BasaltDotnetHelper - A Python tool that lets users build C# tools with one simple command.
 
 ---
 ## How to use the tools
