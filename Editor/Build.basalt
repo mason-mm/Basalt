@@ -13,3 +13,4 @@ Module:
 
   Dependencies:
     - BasaltCore
+    - BasaltLuaEngine

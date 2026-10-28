@@ -1,0 +1,13 @@
+Module:
+  Name: BasaltLuaEngine
+  Type: StaticLibrary
+  CppVersion: "20"
+
+  IncludeDirectories:
+    - Include/
+
+  SourceDirectories:
+    - Source/
+
+  Dependencies:
+    - BasaltCore

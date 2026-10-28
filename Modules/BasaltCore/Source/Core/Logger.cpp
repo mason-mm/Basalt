@@ -55,7 +55,7 @@ namespace Basalt
 			default: break;
 		}
 
-		// Get Timestamp
+		// Get the timestamp.
 		auto now = std::chrono::system_clock::now();
 		auto in_time_t = std::chrono::system_clock::to_time_t(now);
 		std::tm buf{};
@@ -65,7 +65,7 @@ namespace Basalt
 		localtime_r(&in_time_t, &buf);
 #endif
 		
-		// Final log output
+		// Write the final log output.
 		std::cout << colorCode
 				  << "[" << std::put_time(&buf, "%H:%M:%S") << "] "
 				  << "[" << category << "] "
