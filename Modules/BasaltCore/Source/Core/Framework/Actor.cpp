@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Mason Maday. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for full license information.
+
 #include "Core/Framework/Actor.h"
 #include "Core/Logger.h"
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Mason Maday. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for full license information.
+
 #include "Core/GameFramework/LuaScriptComponent.h"
 #include "Core/Logger.h"
 #include "Core/Scripting/LuaScriptManager.h"
