@@ -53,7 +53,7 @@ public abstract class BuildGenerator
     /// <param name="subDirs">All subdirs to look in.</param>
     /// <param name="pattern">The pattern to look for.</param>
     /// <returns>The list of files that match the requirements.</returns>
-    protected static List<string> GetFiles(string baseDir, List<string> subDirs, string pattern)
+    protected static List<string> GetFiles(string baseDir, List<string> subDirs, string pattern, TargetPlatform target)
     {
         var files = new List<string>();
         foreach (var subDir in subDirs)
@@ -61,7 +61,25 @@ public abstract class BuildGenerator
             string fullPath = Path.Combine(baseDir, subDir);
             if (Directory.Exists(fullPath))
             {
-                files.AddRange(Directory.GetFiles(fullPath, pattern, SearchOption.AllDirectories));
+                var discoveredFiles = Directory.GetFiles(fullPath, pattern, SearchOption.AllDirectories);
+                foreach (var file in discoveredFiles)
+                {
+                    string normalizedPath = file.Replace('\\', '/');
+
+                    // Check if the file is in a platform-specific directory.
+                    bool isWindowsFile = normalizedPath.Contains("/Platform/Windows/", StringComparison.OrdinalIgnoreCase);
+                    bool isLinuxFile = normalizedPath.Contains("/Platform/Linux/", StringComparison.OrdinalIgnoreCase);
+                    bool isMacFile = normalizedPath.Contains("/Platform/Mac/", StringComparison.OrdinalIgnoreCase) ||
+                                     normalizedPath.Contains("/Platform/MacOS/", StringComparison.OrdinalIgnoreCase);
+
+                    // Ignore platform-specific files if we are building for a different platform.
+                    if (isWindowsFile && target != TargetPlatform.Win64) continue;
+                    if (isLinuxFile && target != TargetPlatform.Linux) continue;
+                    if (isMacFile && target != TargetPlatform.Mac) continue;
+
+                    // Add the file if it passes all checks.
+                    files.Add(file);
+                }
             }
         }
         return files;

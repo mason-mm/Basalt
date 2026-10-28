@@ -134,8 +134,8 @@ public class NinjaGenerator : BuildGenerator
             sb.AppendLine($"# --- Module: {module.Name} [{config}] ---");
 
             // Collect both .cpp and .c source files
-            var sourceFiles = GetFiles(moduleDir, module.SourceDirectories ?? [], "*.cpp")
-                .Concat(GetFiles(moduleDir, module.SourceDirectories ?? [], "*.c"))
+            var sourceFiles = GetFiles(moduleDir, module.SourceDirectories ?? [], "*.cpp", target)
+                .Concat(GetFiles(moduleDir, module.SourceDirectories ?? [], "*.c", target))
                 .ToList();
 
             string moduleObjDir = Path.Combine(rootDir, "Intermediate", "Build", target.ToString(), config.ToString(), module.Name);
@@ -166,7 +166,11 @@ public class NinjaGenerator : BuildGenerator
             }
 
             string includes = string.Join(" ", includeDirs.Select(d => $"/I\"{d}\""));
-            string defines = string.Join(" ", (module.Defines ?? []).Select(def => $"/D{def}"));
+
+            var definesList = new List<string>(module.Defines ?? []);
+            definesList.Add($"BASALT_PLATFORM_{target.ToString().ToUpper()}");
+            string defines = string.Join(" ", definesList.Select(def => $"/D{def}"));
+
             string cppStd = $"/std:c++{module.CppVersion}";
 
             var objFiles = new List<string>();

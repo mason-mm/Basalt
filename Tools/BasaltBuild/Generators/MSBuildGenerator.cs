@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -82,10 +83,10 @@ public class MSBuildGenerator : BuildGenerator
         string vcxprojPath = Path.Combine(projectFilesDir, $"{module.Name}.vcxproj");
 
         // Get files using the helper method in the base class.
-        var cppFiles = GetFiles(moduleDir, module.SourceDirectories, "*.cpp")
-            .Concat(GetFiles(moduleDir, module.SourceDirectories, "*.c")).ToList();
-        var hFiles = GetFiles(moduleDir, module.SourceDirectories, "*.h")
-            .Concat(GetFiles(moduleDir, module.IncludeDirectories, "*.h")).ToList();
+        var cppFiles = GetFiles(moduleDir, module.SourceDirectories, "*.cpp", target)
+            .Concat(GetFiles(moduleDir, module.SourceDirectories, "*.c", target)).ToList();
+        var hFiles = GetFiles(moduleDir, module.SourceDirectories, "*.h", target)
+            .Concat(GetFiles(moduleDir, module.IncludeDirectories, "*.h", target)).ToList();
 
         // Find config type.
         string configType = module.Type switch
@@ -117,6 +118,10 @@ public class MSBuildGenerator : BuildGenerator
                 }
             }
         }
+
+        // Get the defines list with platform definitions and module definitions.
+        var definesList = new List<string>(module.Defines ?? []);
+        definesList.Add($"BASALT_PLATFORM_{target.ToString().ToUpper()}");
 
         // Setup the XDocument.
         string projectGuid = GenerateDeterministicGuid(module.Name).ToString().ToUpper();
@@ -159,7 +164,7 @@ public class MSBuildGenerator : BuildGenerator
                         new XElement(ns + "WarningLevel", "Level3"),
                         new XElement(ns + "LanguageStandard", $"stdcpp{module.CppVersion}"),
                         new XElement(ns + "AdditionalIncludeDirectories", string.Join(";", includeDirs)),
-                        new XElement(ns + "PreprocessorDefinitions", string.Join(";", module.Defines ?? []))
+                        new XElement(ns + "PreprocessorDefinitions", string.Join(";", definesList ?? []))
                     )
                 ),
 
